@@ -85,8 +85,8 @@ footer a{color:inherit}
   <div class="controls">
     <input type="search" id="q" placeholder="Filter by team or league" aria-label="Filter by team or league">
     <select id="range" aria-label="How far ahead">
-      <option value="3">Next 3 days</option>
-      <option value="7" selected>Next 7 days</option>
+      <option value="3" selected>Next 3 days</option>
+      <option value="7">Next 7 days</option>
       <option value="14">Next 14 days</option>
     </select>
     <button id="refresh" type="button">Refresh</button>
@@ -100,7 +100,13 @@ footer a{color:inherit}
 
 <script>
 const API = "https://lol.fandom.com/api.php";
-const CACHE_MIN = 10;
+const CACHE_MIN = 30;        // minutes before the page fetches fresh data on its own
+const FETCH_DAYS = 14;       // always fetch this far ahead; the dropdown filters locally
+const DEFAULT_RANGE = "3";
+// Leagues selected when nothing is saved yet. Copy names exactly as the chips show them,
+// e.g. ["LoL Champions Korea", "LoL EMEA Championship"]. Empty means all leagues.
+const DEFAULT_LEAGUES = ["World Championship"];
+
 const $ = id => document.getElementById(id);
 const store = {
   get(k){ try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
@@ -108,8 +114,8 @@ const store = {
 };
 
 let matches = [];
-let selected = new Set(store.get("lmt-leagues") || []);
-$("range").value = store.get("lmt-range") || "7";
+let selected = new Set(store.get("lmt-leagues") || DEFAULT_LEAGUES);
+$("range").value = store.get("lmt-range") || DEFAULT_RANGE;
 
 const pad = n => String(n).padStart(2,"0");
 const toCargo = d => `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:00`;
@@ -125,16 +131,24 @@ async function cargo(params){
 }
 
 async function load(force){
-  const days = Number($("range").value);
-  const key = "lmt-cache-" + days;
+  const key = "lmt-cache";
   const cached = store.get(key);
+  const waitUntil = store.get("lmt-wait") || 0;
+  const show = rows => { matches = rows; render(); };
+
+  if (Date.now() < waitUntil){
+    if (cached) show(cached.rows);
+    const t = new Date(waitUntil).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+    setStatus(`Leaguepedia asked for a pause. It’s safe to refresh after ${t}.`, true);
+    return;
+  }
   if (!force && cached && Date.now() - cached.at < CACHE_MIN*60000){
-    matches = cached.rows; render(); setStatus(`Updated ${ago(cached.at)}.`); return;
+    show(cached.rows); setStatus(`Updated ${ago(cached.at)}.`); return;
   }
   setStatus("Loading schedule…");
   const now = new Date();
   const from = toCargo(new Date(now - 5*3600e3));          // catch matches already in progress
-  const to = toCargo(new Date(+now + days*86400e3));
+  const to = toCargo(new Date(+now + FETCH_DAYS*86400e3));
   const where = `MS.DateTime_UTC >= '${from}' AND MS.DateTime_UTC <= '${to}'`;
   const base = "MS.Team1=Team1,MS.Team2=Team2,MS.DateTime_UTC=Start,MS.BestOf=BestOf,MS.Winner=Winner,MS.Team1Score=S1,MS.Team2Score=S2,MS.OverviewPage=Page";
   let rows;
@@ -142,11 +156,15 @@ async function load(force){
     rows = await cargo({tables:"MatchSchedule=MS,Tournaments=T", join_on:"MS.OverviewPage=T.OverviewPage",
       fields: base + ",T.League=League,T.Name=Tournament", where, order_by:"MS.DateTime_UTC ASC"});
   } catch (e) {
-    try { // simpler query if the join is refused
-      rows = await cargo({tables:"MatchSchedule=MS", fields: base, where, order_by:"MS.DateTime_UTC ASC"});
-    } catch (e2) {
-      if (cached){ matches = cached.rows; render(); }
-      setStatus(`Couldn’t reach Leaguepedia: ${e2.message}. ${cached ? "Showing the last saved schedule. " : ""}Try Refresh in a minute.`, true);
+    let err = e;
+    if (!/rate limit/i.test(err.message)){
+      try { rows = await cargo({tables:"MatchSchedule=MS", fields: base, where, order_by:"MS.DateTime_UTC ASC"}); }
+      catch (e2) { err = e2; }
+    }
+    if (!rows){
+      if (/rate limit/i.test(err.message)) store.set("lmt-wait", Date.now() + 5*60000);
+      if (cached) show(cached.rows);
+      setStatus(`Couldn’t reach Leaguepedia: ${err.message.replace(/\.+$/,"")}. ${cached ? "Showing the last saved schedule." : "Try again in a few minutes."}`, true);
       return;
     }
   }
@@ -198,9 +216,11 @@ function save(){ store.set("lmt-leagues", [...selected]); }
 function render(){
   renderChips();
   const q = $("q").value.trim().toLowerCase();
+  const horizon = Number($("range").value) * 86400e3;
   const list = $("list"); list.textContent = "";
   const shown = matches.filter(m => {
     if (state(m) === "stale") return false;
+    if (fromCargo(m.start) - Date.now() > horizon) return false;
     if (selected.size && !selected.has(m.league)) return false;
     if (q && ![m.t1,m.t2,m.league,m.tournament].some(s => s.toLowerCase().includes(q))) return false;
     return true;
@@ -208,7 +228,7 @@ function render(){
   if (!shown.length){
     if (matches.length || !$("status").classList.contains("err")){
       const e = document.createElement("div"); e.className = "empty";
-      e.textContent = matches.length ? "No matches fit these filters. Clear the search or pick All leagues." : "No matches scheduled in this window. Try a longer range.";
+      e.textContent = matches.length ? "No matches fit these filters. Clear the search, pick All leagues or choose a longer range." : "No matches scheduled in this window. Try a longer range.";
       list.append(e);
     }
     return;
@@ -260,9 +280,9 @@ function render(){
 }
 
 $("q").addEventListener("input", render);
-$("range").addEventListener("change", () => { store.set("lmt-range", $("range").value); load(); });
+$("range").addEventListener("change", () => { store.set("lmt-range", $("range").value); render(); });
 $("refresh").addEventListener("click", () => load(true));
-setInterval(render, 30000);   // keep countdowns and live badges current
+setInterval(render, 30000);   // keep countdowns and live badges current; no network calls
 load();
 </script>
 </body>
