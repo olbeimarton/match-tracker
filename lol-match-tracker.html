@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Upcoming LoL matches</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EEF1F5; --surface:#FFFFFF; --ink:#18202E; --muted:#5E6878; --line:#D5DBE4;
+  --blue:#2A63C9; --red:#C93A33; --live:#C93A33; --chip:#E2E7EF;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#121925; --surface:#1A2333; --ink:#E6EBF2; --muted:#93A0B4; --line:#2A3548;
+    --blue:#6C9DF2; --red:#F0716A; --live:#F0716A; --chip:#243045;
+    color-scheme:dark;
+  }
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.5 Barlow,"Segoe UI",system-ui,sans-serif}
+.wrap{max-width:820px;margin:0 auto;padding:28px 18px 60px}
+header h1{font:700 2.4rem/1 "Barlow Condensed","Arial Narrow",sans-serif;margin:0;letter-spacing:.01em}
+header h1 .b{color:var(--blue)} header h1 .r{color:var(--red)}
+header p{margin:6px 0 0;color:var(--muted)}
+.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:22px 0 12px}
+input[type=search],select,button{font:inherit;color:var(--ink);background:var(--surface);
+  border:1px solid var(--line);border-radius:6px;padding:7px 11px}
+input[type=search]{flex:1 1 200px;min-width:0}
+button{cursor:pointer}
+button:hover{border-color:var(--muted)}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.chip{background:var(--chip);border:1px solid transparent;border-radius:999px;padding:3px 12px;font-size:.88rem}
+.chip[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+.status{color:var(--muted);font-size:.9rem;min-height:1.4em;margin:6px 0 18px}
+.status.err{color:var(--red)}
+h2.day{font:600 1.15rem/1.2 "Barlow Condensed","Arial Narrow",sans-serif;margin:28px 0 8px;color:var(--muted)}
+h2.day strong{color:var(--ink);font-weight:700}
+.match{display:grid;grid-template-columns:72px 1fr auto;gap:14px;align-items:center;
+  background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  padding:10px 14px;margin-bottom:6px;text-decoration:none;color:inherit;position:relative;overflow:hidden}
+.match::before,.match::after{content:"";position:absolute;top:0;bottom:0;width:4px}
+.match::before{left:0;background:var(--blue)} .match::after{right:0;background:var(--red)}
+.match:hover{border-color:var(--muted)}
+.match.done{opacity:.62}
+.time{font:600 1.25rem/1 "Barlow Condensed","Arial Narrow",sans-serif}
+.until{display:block;font:500 .78rem/1.3 Barlow,sans-serif;color:var(--muted);margin-top:3px}
+.teams{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;
+  font:600 1.15rem/1.15 "Barlow Condensed","Arial Narrow",sans-serif;min-width:0}
+.t1{text-align:right;color:var(--blue)} .t2{color:var(--red)}
+.t1,.t2{overflow-wrap:anywhere}
+.t1.lost,.t2.lost{opacity:.5}
+.vs{color:var(--muted);font-size:.95rem;font-weight:500;white-space:nowrap}
+.meta{text-align:right;font-size:.82rem;color:var(--muted);line-height:1.3;max-width:160px}
+.meta b{display:block;color:var(--ink);font-weight:600}
+.livetag{display:inline-block;background:var(--live);color:#fff;border-radius:4px;
+  padding:1px 6px;font:600 .72rem/1.4 Barlow,sans-serif;margin-top:4px}
+.empty{background:var(--surface);border:1px dashed var(--line);border-radius:8px;padding:24px;text-align:center;color:var(--muted)}
+footer{margin-top:40px;font-size:.82rem;color:var(--muted)}
+footer a{color:inherit}
+@media (max-width:560px){
+  .match{grid-template-columns:58px 1fr;row-gap:6px}
+  .meta{grid-column:2;text-align:left;max-width:none}
+  .meta b{display:inline;margin-right:6px}
+  .teams{font-size:1.05rem}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="b">Upcoming</span> <span class="r">matches</span></h1>
+    <p>League of Legends pro schedule, shown in your local time.</p>
+  </header>
+
+  <div class="controls">
+    <input type="search" id="q" placeholder="Filter by team or league" aria-label="Filter by team or league">
+    <select id="range" aria-label="How far ahead">
+      <option value="3">Next 3 days</option>
+      <option value="7" selected>Next 7 days</option>
+      <option value="14">Next 14 days</option>
+    </select>
+    <button id="refresh" type="button">Refresh</button>
+  </div>
+  <div class="chips" id="chips" role="group" aria-label="Leagues"></div>
+  <div class="status" id="status" aria-live="polite"></div>
+  <main id="list"></main>
+
+  <footer>Data from <a href="https://lol.fandom.com/" target="_blank" rel="noopener">Leaguepedia</a> (CC BY-SA). Schedules change; the wiki is the source of truth.</footer>
+</div>
+
+<script>
+const API = "https://lol.fandom.com/api.php";
+const CACHE_MIN = 10;
+const $ = id => document.getElementById(id);
+const store = {
+  get(k){ try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+  set(k,v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+
+let matches = [];
+let selected = new Set(store.get("lmt-leagues") || []);
+$("range").value = store.get("lmt-range") || "7";
+
+const pad = n => String(n).padStart(2,"0");
+const toCargo = d => `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:00`;
+const fromCargo = s => new Date(s.replace(" ","T") + "Z");
+
+async function cargo(params){
+  const url = API + "?" + new URLSearchParams({action:"cargoquery", format:"json", origin:"*", limit:"500", ...params});
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Leaguepedia returned HTTP ${res.status}`);
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.info || "Leaguepedia returned an error");
+  return (data.cargoquery || []).map(r => r.title);
+}
+
+async function load(force){
+  const days = Number($("range").value);
+  const key = "lmt-cache-" + days;
+  const cached = store.get(key);
+  if (!force && cached && Date.now() - cached.at < CACHE_MIN*60000){
+    matches = cached.rows; render(); setStatus(`Updated ${ago(cached.at)}.`); return;
+  }
+  setStatus("Loading schedule…");
+  const now = new Date();
+  const from = toCargo(new Date(now - 5*3600e3));          // catch matches already in progress
+  const to = toCargo(new Date(+now + days*86400e3));
+  const where = `MS.DateTime_UTC >= '${from}' AND MS.DateTime_UTC <= '${to}'`;
+  const base = "MS.Team1=Team1,MS.Team2=Team2,MS.DateTime_UTC=Start,MS.BestOf=BestOf,MS.Winner=Winner,MS.Team1Score=S1,MS.Team2Score=S2,MS.OverviewPage=Page";
+  let rows;
+  try {
+    rows = await cargo({tables:"MatchSchedule=MS,Tournaments=T", join_on:"MS.OverviewPage=T.OverviewPage",
+      fields: base + ",T.League=League,T.Name=Tournament", where, order_by:"MS.DateTime_UTC ASC"});
+  } catch (e) {
+    try { // simpler query if the join is refused
+      rows = await cargo({tables:"MatchSchedule=MS", fields: base, where, order_by:"MS.DateTime_UTC ASC"});
+    } catch (e2) {
+      if (cached){ matches = cached.rows; render(); }
+      setStatus(`Couldn’t reach Leaguepedia: ${e2.message}. ${cached ? "Showing the last saved schedule. " : ""}Try Refresh in a minute.`, true);
+      return;
+    }
+  }
+  matches = rows.filter(r => r.Start).map(r => ({
+    t1: r.Team1 || "TBD", t2: r.Team2 || "TBD", start: r.Start,
+    bo: Number(r.BestOf) || 1, winner: r.Winner || "", s1: r.S1, s2: r.S2,
+    page: r.Page || "",
+    league: r.League || (r.Page || "").split("/")[0] || "Other",
+    tournament: r.Tournament || (r.Page || "").replace(/_/g," ")
+  }));
+  store.set(key, {at: Date.now(), rows: matches});
+  render(); setStatus(`Updated just now. ${matches.length} matches found.`);
+}
+
+function ago(t){ const m = Math.round((Date.now()-t)/60000); return m < 1 ? "just now" : `${m} min ago`; }
+function setStatus(msg, err){ const s = $("status"); s.textContent = msg; s.classList.toggle("err", !!err); }
+
+function until(d){
+  const ms = d - Date.now(); if (ms <= 0) return "";
+  const m = Math.round(ms/60000), h = Math.floor(m/60), dd = Math.floor(h/24);
+  if (dd >= 1) return `in ${dd}d ${h%24}h`;
+  if (h >= 1) return `in ${h}h ${m%60}m`;
+  return `in ${m}m`;
+}
+
+function state(m){
+  const d = fromCargo(m.start);
+  if (m.winner) return "done";
+  if (d <= Date.now() && Date.now() - d < m.bo * 75 * 60000) return "live";
+  if (d <= Date.now()) return "stale";
+  return "upcoming";
+}
+
+function renderChips(){
+  const leagues = [...new Set(matches.map(m => m.league))].sort();
+  const box = $("chips"); box.textContent = "";
+  const mk = (label, pressed, onClick) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.textContent = label;
+    b.setAttribute("aria-pressed", pressed); b.onclick = onClick; box.append(b);
+  };
+  mk("All leagues", selected.size === 0, () => { selected.clear(); save(); render(); });
+  leagues.forEach(l => mk(l, selected.has(l), () => {
+    selected.has(l) ? selected.delete(l) : selected.add(l); save(); render();
+  }));
+}
+function save(){ store.set("lmt-leagues", [...selected]); }
+
+function render(){
+  renderChips();
+  const q = $("q").value.trim().toLowerCase();
+  const list = $("list"); list.textContent = "";
+  const shown = matches.filter(m => {
+    if (state(m) === "stale") return false;
+    if (selected.size && !selected.has(m.league)) return false;
+    if (q && ![m.t1,m.t2,m.league,m.tournament].some(s => s.toLowerCase().includes(q))) return false;
+    return true;
+  });
+  if (!shown.length){
+    if (matches.length || !$("status").classList.contains("err")){
+      const e = document.createElement("div"); e.className = "empty";
+      e.textContent = matches.length ? "No matches fit these filters. Clear the search or pick All leagues." : "No matches scheduled in this window. Try a longer range.";
+      list.append(e);
+    }
+    return;
+  }
+  const dayFmt = new Intl.DateTimeFormat(undefined,{weekday:"long", day:"numeric", month:"long"});
+  const timeFmt = new Intl.DateTimeFormat(undefined,{hour:"2-digit", minute:"2-digit"});
+  const today = new Date(); today.setHours(0,0,0,0);
+  let lastDay = "";
+  for (const m of shown){
+    const d = fromCargo(m.start), st = state(m);
+    const dayKey = d.toDateString();
+    if (dayKey !== lastDay){
+      lastDay = dayKey;
+      const dd = new Date(d); dd.setHours(0,0,0,0);
+      const diff = Math.round((dd - today)/86400e3);
+      const h = document.createElement("h2"); h.className = "day";
+      const rel = diff === 0 ? "Today" : diff === 1 ? "Tomorrow" : diff === -1 ? "Yesterday" : "";
+      if (rel){ const s = document.createElement("strong"); s.textContent = rel + " "; h.append(s); }
+      h.append(dayFmt.format(d)); list.append(h);
+    }
+    const a = document.createElement("a");
+    a.className = "match" + (st === "done" ? " done" : "");
+    a.href = "https://lol.fandom.com/wiki/" + encodeURI(m.page.replace(/ /g,"_"));
+    a.target = "_blank"; a.rel = "noopener";
+
+    const time = document.createElement("div"); time.className = "time";
+    time.textContent = timeFmt.format(d);
+    const u = document.createElement("span"); u.className = "until";
+    u.textContent = st === "live" ? "" : st === "done" ? "Finished" : until(d);
+    time.append(u);
+    if (st === "live"){ const lt = document.createElement("span"); lt.className = "livetag"; lt.textContent = "Live"; time.append(lt); }
+
+    const teams = document.createElement("div"); teams.className = "teams";
+    const t1 = document.createElement("span"); t1.className = "t1"; t1.textContent = m.t1;
+    const t2 = document.createElement("span"); t2.className = "t2"; t2.textContent = m.t2;
+    if (m.winner === "1") t2.classList.add("lost");
+    if (m.winner === "2") t1.classList.add("lost");
+    const vs = document.createElement("span"); vs.className = "vs";
+    vs.textContent = (m.s1 !== "" && m.s1 != null && (st === "done" || st === "live")) ? `${m.s1} – ${m.s2}` : "vs";
+    teams.append(t1, vs, t2);
+
+    const meta = document.createElement("div"); meta.className = "meta";
+    const lb = document.createElement("b"); lb.textContent = m.league;
+    meta.append(lb, `Best of ${m.bo}`);
+
+    a.append(time, teams, meta);
+    list.append(a);
+  }
+}
+
+$("q").addEventListener("input", render);
+$("range").addEventListener("change", () => { store.set("lmt-range", $("range").value); load(); });
+$("refresh").addEventListener("click", () => load(true));
+setInterval(render, 30000);   // keep countdowns and live badges current
+load();
+</script>
+</body>
+</html>
